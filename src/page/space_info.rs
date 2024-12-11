@@ -9,6 +9,8 @@ use crate::util::Persistable;
 use crate::DataType;
 use crate::{space, Link};
 
+use super::PageId;
+
 pub type SpaceName = String;
 
 // TODO: Minor. Add some schema description in `SpaceIndo`
@@ -26,6 +28,18 @@ pub struct SpaceInfo<Pk = ()> {
     pub pk_gen_state: Pk,
     pub empty_links_list: Vec<Link>,
     pub secondary_index_map: HashMap<String, DataType>,
+}
+
+impl<Pk> SpaceInfo<Pk> {
+    /// Returns the starting page ID for data pages.
+    /// This is calculated as:
+    /// - SpaceInfo page (0)
+    /// - Primary index page (1)
+    /// - Secondary index pages (count varies)
+    /// So data pages start at (2 + secondary_index_count)
+    pub fn get_data_start_page_id(&self) -> PageId {
+        PageId(2 + self.secondary_index_map.len() as u32)
+    }
 }
 
 /// Represents some interval between values.
@@ -51,8 +65,9 @@ where
 mod test {
     use std::collections::HashMap;
 
-    use crate::page::{SpaceInfo, INNER_PAGE_SIZE};
+    use crate::page::{PageId, SpaceInfo, INNER_PAGE_SIZE};
     use crate::util::Persistable;
+    use crate::DataType;
 
     #[test]
     fn test_as_bytes() {
@@ -69,5 +84,37 @@ mod test {
         };
         let bytes = info.as_bytes();
         assert!(bytes.as_ref().len() < INNER_PAGE_SIZE)
+    }
+
+    #[test]
+    fn test_get_data_start_page_id() {
+        let info = SpaceInfo {
+            id: 0.into(),
+            page_count: 0,
+            name: "Test".to_string(),
+            primary_key_intervals: vec![],
+            secondary_index_intervals: HashMap::new(),
+            data_intervals: vec![],
+            pk_gen_state: (),
+            empty_links_list: vec![],
+            secondary_index_map: HashMap::new(),
+        };
+        assert_eq!(info.get_data_start_page_id(), PageId(2));
+
+        let mut secondary_index_map = HashMap::new();
+        secondary_index_map.insert("index1".to_string(), DataType::String);
+        secondary_index_map.insert("index2".to_string(), DataType::String);
+        let info = SpaceInfo {
+            id: 0.into(),
+            page_count: 0,
+            name: "Test".to_string(),
+            primary_key_intervals: vec![],
+            secondary_index_intervals: HashMap::new(),
+            data_intervals: vec![],
+            pk_gen_state: (),
+            empty_links_list: vec![],
+            secondary_index_map,
+        };
+        assert_eq!(info.get_data_start_page_id(), PageId(4));
     }
 }

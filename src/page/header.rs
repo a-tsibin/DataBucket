@@ -7,6 +7,8 @@ use crate::space;
 use crate::util::Persistable;
 use crate::{page, GENERAL_HEADER_SIZE, PAGE_SIZE};
 
+use super::PageId;
+
 pub const DATA_VERSION: u32 = 1u32;
 
 /// Header that appears on every page before it's inner data.
@@ -55,8 +57,8 @@ impl GeneralHeader {
     /// Creates a new [`GeneralHeader`] for a page that follows page with given
     /// header but with different [`PageType`]. [`space::Id`] is same and old
     /// [`page::PageId`] will be `previous_id`.
-    pub fn follow_with(&mut self, page_type: PageType) -> Self {
-        self.next_id = self.page_id.next();
+    pub fn follow_with(&mut self, page_type: PageType, id_offset: PageId) -> Self {
+        self.next_id = self.page_id.next() + id_offset;
         Self {
             data_version: DATA_VERSION,
             page_id: self.next_id,

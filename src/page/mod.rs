@@ -6,6 +6,8 @@ mod space_info;
 mod ty;
 mod util;
 
+use std::ops::Add;
+
 use derive_more::{Display, From};
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -68,6 +70,14 @@ pub struct PageId(u32);
 impl PageId {
     pub fn next(self) -> Self {
         PageId(self.0 + 1)
+    }
+}
+
+impl Add<PageId> for PageId {
+    type Output = PageId;
+
+    fn add(self, rhs: PageId) -> Self::Output {
+        PageId(self.0 + rhs.0)
     }
 }
 

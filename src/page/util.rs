@@ -20,7 +20,7 @@ pub fn map_index_pages_to_general<T>(
 
     for p in pages {
         let general = General {
-            header: previous_header.follow_with(PageType::Index),
+            header: previous_header.follow_with(PageType::Index, 0.into()),
             inner: p,
         };
 
@@ -34,13 +34,15 @@ pub fn map_index_pages_to_general<T>(
 pub fn map_data_pages_to_general<const DATA_LENGTH: usize>(
     pages: Vec<DataPage<DATA_LENGTH>>,
     header: &mut GeneralHeader,
+    space_info: &SpaceInfo,
 ) -> Vec<General<DataPage<DATA_LENGTH>>> {
     let mut previous_header = header;
     let mut general_pages = vec![];
+    let id_offset = space_info.get_data_start_page_id();
 
     for p in pages {
         let general = General {
-            header: previous_header.follow_with(PageType::Data),
+            header: previous_header.follow_with(PageType::Data, id_offset),
             inner: p,
         };
 
@@ -223,20 +225,76 @@ where
 
 #[cfg(test)]
 mod test {
+    use scc::ebr::Guard;
+    use scc::TreeIndex;
     use std::collections::HashMap;
     use std::fs::remove_file;
     use std::path::Path;
-    use scc::ebr::Guard;
-    use scc::TreeIndex;
 
     use crate::page::index::IndexValue;
+    use crate::page::SpaceInfo;
     use crate::page::INNER_PAGE_SIZE;
     use crate::{
-        map_index_pages_to_general, map_unique_tree_index, DataType, GeneralHeader, GeneralPage,
-        IndexData, Interval, Link, PageType, SpaceInfoData, DATA_VERSION, PAGE_SIZE,
+        map_index_pages_to_general, map_unique_tree_index, DataPage, DataType, GeneralHeader,
+        GeneralPage, IndexData, Interval, Link, PageType, SpaceInfoData, DATA_VERSION, PAGE_SIZE,
     };
 
-    use super::{persist_page, read_index_pages};
+    use super::{map_data_pages_to_general, persist_page, read_index_pages};
+
+    #[test]
+    fn test_map_data_pages() {
+        let mut secondary_index_map = HashMap::new();
+        secondary_index_map.insert("index1".to_string(), DataType::String);
+        secondary_index_map.insert("index2".to_string(), DataType::String);
+        let space_info = SpaceInfo {
+            id: 0.into(),
+            page_count: 0,
+            name: "Test".to_string(),
+            primary_key_intervals: vec![],
+            secondary_index_intervals: HashMap::new(),
+            data_intervals: vec![],
+            pk_gen_state: (),
+            empty_links_list: vec![],
+            secondary_index_map,
+        };
+
+        let pages = vec![
+            DataPage {
+                data: [0; INNER_PAGE_SIZE],
+                length: 0,
+            },
+            DataPage {
+                data: [0; INNER_PAGE_SIZE],
+                length: 0,
+            },
+        ];
+
+        let mut header = GeneralHeader {
+            data_version: DATA_VERSION,
+            space_id: 0.into(),
+            page_id: 2.into(),
+            previous_id: 1.into(),
+            next_id: 0.into(),
+            page_type: PageType::Index,
+            data_length: PAGE_SIZE as u32,
+        };
+
+        let result = map_data_pages_to_general(pages, &mut header, &space_info);
+
+        assert_eq!(result.len(), 2);
+
+        let first = &result[0].header;
+        assert_eq!(first.page_id.0, 7);
+        assert_eq!(first.page_type, PageType::Data);
+        assert_eq!(first.previous_id.0, 2);
+        assert_eq!(first.next_id.0, 12);
+
+        let second = &result[1].header;
+        assert_eq!(second.page_id.0, 12);
+        assert_eq!(second.page_type, PageType::Data);
+        assert_eq!(second.previous_id.0, 7);
+        assert_eq!(second.next_id.0, 0);
+    }
 
     #[test]
     fn test_map() {
@@ -374,9 +432,7 @@ mod test {
         // read the data
         let mut file = std::fs::File::open(filename).unwrap();
         let index_pages =
-            read_index_pages::<String, PAGE_SIZE>(&mut file, "string_index", vec![
-                Interval(1, 2), Interval(5, 6)
-                ])
+            read_index_pages::<String, PAGE_SIZE>(&mut file, "string_index", vec![Interval(1, 2)])
                 .unwrap();
         assert_eq!(index_pages[0].index_values.len(), 1);
         assert_eq!(index_pages[0].index_values[0].key, "first_value");
